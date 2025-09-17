@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,8 @@ from app.schemas.project import (
     TaskCreate, TaskOut, TaskUpdate,
     SubtaskCreate, SubtaskOut, SubtaskUpdate,
 )
+from app.utils.deps import get_current_user
+from app.models.user import User
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -27,8 +29,12 @@ def today_cache_key(user_id: int) -> str:
 
 
 @router.post("/", response_model=ProjectOut)
-async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)):
-    project = Project(name=data.name, description=data.description, owner_id=1)
+async def create_project(
+    data: ProjectCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = Project(name=data.name, description=data.description, owner_id=current_user.id)
     db.add(project)
     await db.commit()
     await db.refresh(project)
@@ -36,16 +42,24 @@ async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/", response_model=List[ProjectOut])
-async def list_projects(db: AsyncSession = Depends(get_db)):
-    rows = (await db.execute(select(Project))).scalars().all()
+async def list_projects(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (await db.execute(select(Project).where(Project.owner_id == current_user.id))).scalars().all()
     return rows
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
-async def update_project(project_id: int, data: ProjectUpdate, db: AsyncSession = Depends(get_db)):
+async def update_project(
+    project_id: int,
+    data: ProjectUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     proj = await db.get(Project, project_id)
-    if not proj:
-        raise HTTPException(status_code=404, detail="Project not found")
+    if not proj or proj.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(proj, k, v)
     await db.commit()
@@ -54,10 +68,14 @@ async def update_project(project_id: int, data: ProjectUpdate, db: AsyncSession 
 
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_project(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     proj = await db.get(Project, project_id)
-    if not proj:
-        raise HTTPException(status_code=404, detail="Project not found")
+    if not proj or proj.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     await db.delete(proj)
     await db.commit()
     return {"message": "deleted"}
@@ -65,7 +83,15 @@ async def delete_project(project_id: int, db: AsyncSession = Depends(get_db)):
 
 # Boards
 @router.post("/{project_id}/boards", response_model=BoardOut)
-async def create_board(project_id: int, data: BoardCreate, db: AsyncSession = Depends(get_db)):
+async def create_board(
+    project_id: int,
+    data: BoardCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    proj = await db.get(Project, project_id)
+    if not proj or proj.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     board = Board(name=data.name, project_id=project_id)
     db.add(board)
     await db.commit()
@@ -74,16 +100,31 @@ async def create_board(project_id: int, data: BoardCreate, db: AsyncSession = De
 
 
 @router.get("/{project_id}/boards", response_model=List[BoardOut])
-async def list_boards(project_id: int, db: AsyncSession = Depends(get_db)):
+async def list_boards(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    proj = await db.get(Project, project_id)
+    if not proj or proj.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     rows = (await db.execute(select(Board).where(Board.project_id == project_id))).scalars().all()
     return rows
 
 
 @router.patch("/boards/{board_id}", response_model=BoardOut)
-async def update_board(board_id: int, data: BoardUpdate, db: AsyncSession = Depends(get_db)):
+async def update_board(
+    board_id: int,
+    data: BoardUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     board = await db.get(Board, board_id)
     if not board:
-        raise HTTPException(status_code=404, detail="Board not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    proj = await db.get(Project, board.project_id)
+    if not proj or proj.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(board, k, v)
     await db.commit()
@@ -92,10 +133,17 @@ async def update_board(board_id: int, data: BoardUpdate, db: AsyncSession = Depe
 
 
 @router.delete("/boards/{board_id}")
-async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_board(
+    board_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     board = await db.get(Board, board_id)
     if not board:
-        raise HTTPException(status_code=404, detail="Board not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    proj = await db.get(Project, board.project_id)
+    if not proj or proj.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
     await db.delete(board)
     await db.commit()
     return {"message": "deleted"}
@@ -103,7 +151,19 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
 
 # Tasks
 @router.post("/boards/{board_id}/tasks", response_model=TaskOut)
-async def create_task(board_id: int, data: TaskCreate, db: AsyncSession = Depends(get_db), r=Depends(get_redis)):
+async def create_task(
+    board_id: int,
+    data: TaskCreate,
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
+    board = await db.get(Board, board_id)
+    if not board:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    proj = await db.get(Project, board.project_id)
+    if not proj or proj.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
     task = Task(
         title=data.title,
         description=data.description,
@@ -112,77 +172,128 @@ async def create_task(board_id: int, data: TaskCreate, db: AsyncSession = Depend
         due_date=data.due_date,
         is_today=data.is_today or False,
         board_id=board_id,
-        owner_id=1,
+        owner_id=current_user.id,
     )
     db.add(task)
     await db.commit()
     await db.refresh(task)
-    await r.delete(today_cache_key(1))
+    await r.delete(today_cache_key(current_user.id))
     return task
 
 
 @router.get("/boards/{board_id}/tasks", response_model=List[TaskOut])
-async def list_tasks(board_id: int, db: AsyncSession = Depends(get_db)):
-    rows = (await db.execute(select(Task).where(Task.board_id == board_id))).scalars().all()
+async def list_tasks(
+    board_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    board = await db.get(Board, board_id)
+    if not board:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    proj = await db.get(Project, board.project_id)
+    if not proj or proj.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    rows = (
+        await db.execute(
+            select(Task).where(Task.board_id == board_id, Task.owner_id == current_user.id)
+        )
+    ).scalars().all()
     return rows
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
-async def update_task(task_id: int, data: TaskUpdate, db: AsyncSession = Depends(get_db), r=Depends(get_redis)):
+async def update_task(
+    task_id: int,
+    data: TaskUpdate,
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
     task = await db.get(Task, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    if not task or task.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(task, k, v)
     await db.commit()
     await db.refresh(task)
-    await r.delete(today_cache_key(1))
+    await r.delete(today_cache_key(current_user.id))
     return task
 
 
 @router.delete("/tasks/{task_id}")
-async def delete_task(task_id: int, db: AsyncSession = Depends(get_db), r=Depends(get_redis)):
+async def delete_task(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
     task = await db.get(Task, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    if not task or task.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     await db.delete(task)
     await db.commit()
-    await r.delete(today_cache_key(1))
+    await r.delete(today_cache_key(current_user.id))
     return {"message": "deleted"}
 
 
 # Subtasks
 @router.post("/tasks/{task_id}/subtasks", response_model=SubtaskOut)
-async def create_subtask(task_id: int, data: SubtaskCreate, db: AsyncSession = Depends(get_db), r=Depends(get_redis)):
+async def create_subtask(
+    task_id: int,
+    data: SubtaskCreate,
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
+    parent = await db.get(Task, task_id)
+    if not parent or parent.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     sub = Subtask(title=data.title, done=data.done, task_id=task_id)
     db.add(sub)
     await db.commit()
     await db.refresh(sub)
-    await r.delete(today_cache_key(1))
+    await r.delete(today_cache_key(current_user.id))
     return sub
 
 
 @router.patch("/subtasks/{subtask_id}", response_model=SubtaskOut)
-async def update_subtask(subtask_id: int, data: SubtaskUpdate, db: AsyncSession = Depends(get_db), r=Depends(get_redis)):
+async def update_subtask(
+    subtask_id: int,
+    data: SubtaskUpdate,
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
     sub = await db.get(Subtask, subtask_id)
     if not sub:
-        raise HTTPException(status_code=404, detail="Subtask not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
+    parent = await db.get(Task, sub.task_id)
+    if not parent or parent.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(sub, k, v)
     await db.commit()
     await db.refresh(sub)
-    await r.delete(today_cache_key(1))
+    await r.delete(today_cache_key(current_user.id))
     return sub
 
 
 @router.get("/today", response_model=List[TaskOut])
-async def list_today(db: AsyncSession = Depends(get_db), r=Depends(get_redis)):
-    key = today_cache_key(1)
+async def list_today(
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
+    key = today_cache_key(current_user.id)
     cached = await r.get(key)
     if cached:
         import json
         return json.loads(cached)
-    rows = (await db.execute(select(Task).where(Task.is_today == True))).scalars().all()  # noqa: E712
+    rows = (
+        await db.execute(
+            select(Task).where(Task.is_today == True, Task.owner_id == current_user.id)  # noqa: E712
+        )
+    ).scalars().all()
     out = [TaskOut.model_validate(row) for row in rows]
     payload = jsonable_encoder(out)
     import json
