@@ -6,6 +6,15 @@ import {
   getBoards, createBoard, updateBoard, deleteBoard,
   getTasks, createTask, updateTask, deleteTask,
 } from '../api'
+import {
+  Box, Paper, Typography, Button, Stack,
+  TextField, Select, MenuItem, FormControl, InputLabel,
+  Checkbox, FormControlLabel, Chip, Divider,
+  Card, CardContent, IconButton
+} from '@mui/material'
+// 使用 Box + CSS Grid 实现布局，避免 Grid API 版本差异
+import EditIcon from '@mui/icons-material/Edit'
+import DeleteIcon from '@mui/icons-material/Delete'
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -70,12 +79,9 @@ export function ProjectsPage() {
   async function removeBoard(id: number) {
     if (!confirm('删除看板？')) return
     await deleteBoard(id)
-    setBoards(prev => {
-      const next = prev.filter(x => x.id !== id)
-      setTasks(ts => ts.filter(t => t.board_id !== id))
-      if (formBoardId === id) setFormBoardId(next[0]?.id ?? null)
-      return next
-    })
+    setBoards(prev => prev.filter(x => x.id !== id))
+    setTasks(prev => prev.filter(t => t.board_id !== id))
+    if (formBoardId === id) setFormBoardId(prev => boards.find(b => b.id !== id)?.id ?? null)
   }
 
   // 任务 CRUD 与操作
@@ -128,169 +134,187 @@ export function ProjectsPage() {
     doing: tasks.filter(t => t.status === 'doing'),
     done: tasks.filter(t => t.status === 'done'),
   }
-  function priorityBadge(p?: Priority) {
-    const map: Record<Priority, string> = { low: 'bg-green-100 text-green-700', normal: 'bg-gray-100 text-gray-700', high: 'bg-red-100 text-red-700' }
-    const label: Record<Priority, string> = { low: '低', normal: '中', high: '高' }
-    const key = (p ?? 'normal') as Priority
-    return <span className={`text-xs px-2 py-0.5 rounded ${map[key]}`}>优先级:{label[key]}</span>
-  }
+  function priorityChipColor(p?: Priority | null) { return p==='high' ? 'error' : p==='low' ? 'success' : 'default' }
   function isOverdue(d?: string | null) { if (!d) return false; try { return new Date(d) < new Date(new Date().toDateString()) } catch { return false } }
 
   return (
-    <div className="grid grid-cols-12 gap-4">
+  <Box display="grid" gap={3} sx={{ gridTemplateColumns: { xs: '1fr', md: '280px 1fr' } }}>
       {/* 左侧项目列表 */}
-      <div className="col-span-3">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-semibold">项目</h2>
-          <button onClick={addProject} className="text-sm text-blue-600">+ 新建</button>
-        </div>
-        <ul className="space-y-1">
-          {projects.map(p => (
-            <li key={p.id} className={`px-2 py-1 rounded cursor-pointer ${activeProject===p.id?'bg-blue-50':''}`} onClick={()=>setActiveProject(p.id)}>
-              <div className="flex items-center justify-between">
-                <span>{p.name}</span>
-                <div className="text-xs text-gray-500 space-x-2">
-                  <button onClick={(e)=>{e.stopPropagation(); renameProject(p.id)}}>改名</button>
-                  <button onClick={(e)=>{e.stopPropagation(); removeProject(p.id)}}>删除</button>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* 右侧：拖拽 + 新建任务 + 看板列表 */}
-      <div className="col-span-9">
-        {/* 拖拽区域 */}
-        <div className="mb-4">
-          <h2 className="font-semibold mb-2">拖拽移动（按状态）</h2>
-          <DragDropContext onDragEnd={async (result: DropResult) => {
-            const { destination, source, draggableId } = result
-            if (!destination) return
-            const from = source.droppableId as Status
-            const to = destination.droppableId as Status
-            if (from === to && source.index === destination.index) return
-            const id = parseInt(draggableId, 10)
-            try { await updateTask(id, { status: to }); setTasks(prev => prev.map(x => x.id === id ? { ...x, status: to } : x)) } catch {}
-          }}>
-            <div className="grid grid-cols-3 gap-3">
-              {columns.map(col => (
-                <div key={col} className="bg-gray-50 rounded border p-2 min-h-[200px]">
-                  <div className="font-semibold capitalize mb-2">{col}</div>
-                  <Droppable droppableId={col}>
-                    {(provided: any) => (
-                      <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2 min-h-[100px]">
-                        {tasksByStatus[col].map((t, index) => (
-                          <Draggable key={t.id} draggableId={String(t.id)} index={index}>
-                            {(drag: any) => (
-                              <div ref={drag.innerRef} {...drag.draggableProps} {...drag.dragHandleProps} className="bg-white rounded border p-2">
-                                <div className="flex items-start justify-between">
-                                  <div className="font-medium">{t.title}</div>
-                                  <div className="text-xs space-x-2">{priorityBadge(t.priority)}</div>
-                                </div>
-                                <div className="text-xs text-gray-600 mt-1 flex items-center gap-2">
-                                  {t.due_date && (<span className={isOverdue(t.due_date) ? 'text-red-600' : ''}>截止: {new Date(t.due_date).toLocaleDateString()}</span>)}
-                                  <span>今日: {t.is_today ? '✓' : '✗'}</span>
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                        {tasksByStatus[col].length === 0 && <div className="text-xs text-gray-500">无任务</div>}
-                      </div>
-                    )}
-                  </Droppable>
-                </div>
+  <Box>
+        <Paper variant="outlined">
+          <Box p={2} display="flex" alignItems="center" justifyContent="space-between">
+            <Typography fontWeight={600}>项目</Typography>
+            <Button size="small" onClick={addProject}>+ 新建</Button>
+          </Box>
+          <Divider />
+          <Box p={1}>
+            <Stack spacing={1}>
+              {projects.map(p => (
+                <Paper key={p.id} variant={activeProject===p.id?'elevation':'outlined'} sx={{ p: 1, cursor: 'pointer' }} onClick={()=>setActiveProject(p.id)}>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between">
+                    <Typography>{p.name}</Typography>
+                    <Stack direction="row" spacing={0.5}>
+                      <IconButton size="small" onClick={(e)=>{e.stopPropagation(); renameProject(p.id)}}><EditIcon fontSize="small"/></IconButton>
+                      <IconButton size="small" color="error" onClick={(e)=>{e.stopPropagation(); removeProject(p.id)}}><DeleteIcon fontSize="small"/></IconButton>
+                    </Stack>
+                  </Stack>
+                </Paper>
               ))}
-            </div>
-          </DragDropContext>
-        </div>
+            </Stack>
+          </Box>
+        </Paper>
+  </Box>
 
-        {/* 新建任务表单 */}
-        <div className="mb-4">
-          <h2 className="font-semibold mb-2">新建任务</h2>
-          <div className="bg-white border rounded p-3 space-y-2">
-            <input className="w-full border px-2 py-1 rounded" placeholder="标题" value={form.title} onChange={e=>setForm(f=>({...f, title:e.target.value}))} />
-            <textarea className="w-full border px-2 py-1 rounded" placeholder="描述（可选）" value={form.description} onChange={e=>setForm(f=>({...f, description:e.target.value}))} />
-            <div className="flex items-center gap-3 text-sm">
-              <label className="flex items-center gap-1">
-                <span>看板</span>
-                <select className="border rounded px-1 py-0.5" value={formBoardId ?? ''} onChange={e=>setFormBoardId(e.target.value? Number(e.target.value): null)}>
-                  {boards.length === 0 && <option value="">无可用看板</option>}
-                  {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </label>
-              <label className="flex items-center gap-1">
-                <span>优先级</span>
-                <select className="border rounded px-1 py-0.5" value={form.priority} onChange={e=>setForm(f=>({...f, priority:e.target.value as Priority}))}>
-                  <option value="low">低</option>
-                  <option value="normal">中</option>
-                  <option value="high">高</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" checked={form.is_today} onChange={e=>setForm(f=>({...f, is_today:e.target.checked}))} /> 加入今日
-              </label>
-              <label className="flex items-center gap-1">
-                <span>截止</span>
-                <input type="date" className="border rounded px-1 py-0.5" value={form.due} onChange={e=>setForm(f=>({...f, due:e.target.value}))} />
-              </label>
-              <button onClick={addTask} className="ml-auto bg-blue-600 text-white text-sm rounded px-2 py-1" disabled={!form.title.trim() || !formBoardId}>创建</button>
-            </div>
-          </div>
-        </div>
-
-        {/* 看板列表：任务放在看板下面 */}
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-semibold">看板</h2>
-            <button onClick={addBoard} className="text-sm text-blue-600">+ 新建看板</button>
-          </div>
-          <div className="space-y-3">
-            {boards.map(b => (
-              <div key={b.id} className="bg-white border rounded">
-                <div className="px-3 py-2 border-b flex items-center justify-between">
-                  <div className="font-medium">{b.name}</div>
-                  <div className="text-xs text-gray-600 space-x-3">
-                    <button onClick={()=>renameBoard(b.id)}>改名</button>
-                    <button onClick={()=>removeBoard(b.id)} className="text-red-600">删除</button>
-                  </div>
-                </div>
-                <ul className="p-3 space-y-2">
-                  {tasks.filter(t => t.board_id === b.id).map(t => (
-                    <li key={t.id} className="bg-gray-50 rounded border px-3 py-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium">{t.title}</div>
-                          <div className="text-xs text-gray-600 mt-1 space-x-2">
-                            <span>状态: {t.status ?? 'todo'}</span>
-                            {priorityBadge(t.priority)}
-                            {t.due_date && <span className={isOverdue(t.due_date) ? 'text-red-600' : ''}>截止: {new Date(t.due_date).toLocaleDateString()}</span>}
-                            <span>今日: {t.is_today ? '✓' : '✗'}</span>
-                          </div>
-                          {t.description && <div className="text-xs text-gray-600 mt-1">{t.description}</div>}
-                        </div>
-                        <div className="text-xs text-gray-600 space-x-3">
-                          <button onClick={()=>cycleStatus(t.id)}>切换状态</button>
-                          <button onClick={()=>toggleToday(t.id)}>{t.is_today?'移出今日':'加入今日'}</button>
-                          <button onClick={()=>setDueDate(t.id)}>截止日期</button>
-                          <button onClick={()=>renameTask(t.id)}>重命名</button>
-                          <button onClick={()=>removeTask(t.id)} className="text-red-600">删除</button>
-                        </div>
-                      </div>
-                    </li>
+      {/* 右侧 */}
+  <Box>
+        <Stack spacing={3}>
+          {/* 拖拽区域 */}
+          <Paper variant="outlined">
+            <Box p={2}>
+              <Typography fontWeight={600} mb={1}>拖拽移动（按状态）</Typography>
+              <DragDropContext onDragEnd={async (result: DropResult) => {
+                const { destination, source, draggableId } = result
+                if (!destination) return
+                const from = source.droppableId as Status
+                const to = destination.droppableId as Status
+                if (from === to && source.index === destination.index) return
+                const id = parseInt(draggableId, 10)
+                try { await updateTask(id, { status: to }); setTasks(prev => prev.map(x => x.id === id ? { ...x, status: to } : x)) } catch {}
+              }}>
+                <Box display="grid" gap={2} sx={{ gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' } }}>
+                  {columns.map(col => (
+                    <Box key={col}>
+                      <Paper variant="outlined" sx={{ p: 1, minHeight: 220 }}>
+                        <Typography variant="subtitle2" fontWeight={600} textTransform="capitalize" mb={1}>{col}</Typography>
+                        <Droppable droppableId={col}>
+                          {(provided: any) => (
+                            <Stack ref={provided.innerRef} {...provided.droppableProps} spacing={1} sx={{ minHeight: 140 }}>
+                              {tasksByStatus[col].map((t, index) => (
+                                <Draggable key={t.id} draggableId={String(t.id)} index={index}>
+                                  {(drag: any) => (
+                                    <Card ref={drag.innerRef} {...drag.draggableProps} {...drag.dragHandleProps} variant="outlined">
+                                      <CardContent sx={{ py: 1.5 }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                                          <Typography fontWeight={600}>{t.title}</Typography>
+                                          <Chip size="small" color={priorityChipColor(t.priority)} label={t.priority ?? 'normal'} />
+                                        </Stack>
+                                        <Stack direction="row" spacing={1} alignItems="center" mt={0.5}>
+                                          {t.due_date && (
+                                            <Typography variant="caption" color={isOverdue(t.due_date) ? 'error' : 'text.secondary'}>
+                                              截止: {new Date(t.due_date).toLocaleDateString()}
+                                            </Typography>
+                                          )}
+                                          <Typography variant="caption">今日: {t.is_today ? '✓' : '✗'}</Typography>
+                                        </Stack>
+                                      </CardContent>
+                                    </Card>
+                                  )}
+                                </Draggable>
+                              ))}
+                              {provided.placeholder}
+                              {tasksByStatus[col].length === 0 && (
+                                <Typography variant="caption" color="text.secondary">无任务</Typography>
+                              )}
+                            </Stack>
+                          )}
+                        </Droppable>
+                      </Paper>
+                    </Box>
                   ))}
-                  {tasks.filter(t => t.board_id === b.id).length === 0 && (
-                    <div className="text-xs text-gray-500">该看板暂无任务</div>
-                  )}
-                </ul>
-              </div>
+                </Box>
+              </DragDropContext>
+            </Box>
+          </Paper>
+
+          {/* 新建任务表单 */}
+          <Paper variant="outlined">
+            <Box p={2}>
+              <Typography fontWeight={600} mb={1}>新建任务</Typography>
+              <Stack spacing={1.5}>
+                <TextField size="small" label="标题" value={form.title} onChange={e=>setForm(f=>({...f, title:e.target.value}))} />
+                <TextField size="small" label="描述（可选）" multiline minRows={2} value={form.description} onChange={e=>setForm(f=>({...f, description:e.target.value}))} />
+                <Stack direction={{ xs:'column', sm:'row' }} spacing={2} alignItems={{ xs:'stretch', sm:'center' }}>
+                  <FormControl size="small" sx={{ minWidth: 160 }}>
+                    <InputLabel id="board-select">看板</InputLabel>
+                    <Select labelId="board-select" value={formBoardId ?? ''} label="看板" onChange={e=>setFormBoardId((e.target.value as any) ? Number(e.target.value) : null)}>
+                      {boards.length === 0 && <MenuItem value="">无可用看板</MenuItem>}
+                      {boards.map(b => <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 160 }}>
+                    <InputLabel id="priority-select">优先级</InputLabel>
+                    <Select labelId="priority-select" value={form.priority} label="优先级" onChange={e=>setForm(f=>({...f, priority:e.target.value as Priority}))}>
+                      <MenuItem value="low">低</MenuItem>
+                      <MenuItem value="normal">中</MenuItem>
+                      <MenuItem value="high">高</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControlLabel control={<Checkbox checked={form.is_today} onChange={e=>setForm(f=>({...f, is_today:e.target.checked}))} />} label="加入今日" />
+                  <TextField size="small" type="date" label="截止" InputLabelProps={{ shrink: true }} value={form.due} onChange={e=>setForm(f=>({...f, due:e.target.value}))} />
+                  <Box flex={1} />
+                  <Button variant="contained" onClick={addTask} disabled={!form.title.trim() || !formBoardId}>创建</Button>
+                </Stack>
+              </Stack>
+            </Box>
+          </Paper>
+
+          {/* 看板列表 */}
+          <Stack spacing={2}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Typography fontWeight={600}>看板</Typography>
+              <Button size="small" onClick={addBoard}>+ 新建看板</Button>
+            </Stack>
+            {boards.map(b => (
+              <Paper key={b.id} variant="outlined">
+                <Box px={2} py={1.5} display="flex" alignItems="center" justifyContent="space-between" borderBottom={1} borderColor="divider">
+                  <Typography fontWeight={600}>{b.name}</Typography>
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" startIcon={<EditIcon />} onClick={()=>renameBoard(b.id)}>改名</Button>
+                    <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={()=>removeBoard(b.id)}>删除</Button>
+                  </Stack>
+                </Box>
+                <Box p={2}>
+                  <Stack spacing={1.5}>
+                    {tasks.filter(t => t.board_id === b.id).map(t => (
+                      <Card key={t.id} variant="outlined">
+                        <CardContent sx={{ py: 1.5 }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                            <Box>
+                              <Typography fontWeight={600}>{t.title}</Typography>
+                              {t.description && <Typography variant="body2" color="text.secondary">{t.description}</Typography>}
+                              <Stack direction="row" spacing={1} alignItems="center" mt={0.5}>
+                                <Chip size="small" label={`状态: ${t.status ?? 'todo'}`} />
+                                <Chip size="small" color={priorityChipColor(t.priority)} label={t.priority ?? 'normal'} />
+                                {t.due_date && (
+                                  <Typography variant="caption" color={isOverdue(t.due_date) ? 'error' : 'text.secondary'}>
+                                    截止: {new Date(t.due_date).toLocaleDateString()}
+                                  </Typography>
+                                )}
+                                <Typography variant="caption">今日: {t.is_today ? '✓' : '✗'}</Typography>
+                              </Stack>
+                            </Box>
+                            <Stack direction="row" spacing={1}>
+                              <Button size="small" onClick={()=>cycleStatus(t.id)}>切换状态</Button>
+                              <Button size="small" onClick={()=>toggleToday(t.id)}>{t.is_today?'移出今日':'加入今日'}</Button>
+                              <Button size="small" onClick={()=>setDueDate(t.id)}>截止日期</Button>
+                              <Button size="small" onClick={()=>renameTask(t.id)}>重命名</Button>
+                              <Button size="small" color="error" onClick={()=>removeTask(t.id)}>删除</Button>
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    ))}
+                    {tasks.filter(t => t.board_id === b.id).length === 0 && (
+                      <Typography variant="body2" color="text.secondary">该看板暂无任务</Typography>
+                    )}
+                  </Stack>
+                </Box>
+              </Paper>
             ))}
-            {boards.length === 0 && <div className="text-gray-500">该项目暂无看板</div>}
-          </div>
-        </div>
-      </div>
-    </div>
+            {boards.length === 0 && <Typography color="text.secondary">该项目暂无看板</Typography>}
+          </Stack>
+        </Stack>
+      </Box>
+    </Box>
   )
 }

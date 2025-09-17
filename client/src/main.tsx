@@ -1,28 +1,42 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './index.css'
-import { LoginPage } from './pages/Login'
-import { RegisterPage } from './pages/Register'
-import { TodayPage } from './pages/Today'
-import { ProjectsPage } from './pages/Projects'
+const LoginPage = lazy(() => import('./pages/Login').then(m => ({ default: m.LoginPage })))
+const RegisterPage = lazy(() => import('./pages/Register').then(m => ({ default: m.RegisterPage })))
+const TodayPage = lazy(() => import('./pages/Today').then(m => ({ default: m.TodayPage })))
+const ProjectsPage = lazy(() => import('./pages/Projects').then(m => ({ default: m.ProjectsPage })))
 import Layout from './pages/Layout'
+import { ThemeProvider, createTheme, CssBaseline, Box, CircularProgress } from '@mui/material'
+
+const Fallback = (
+  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 8 }}>
+    <CircularProgress />
+  </Box>
+)
 
 const router = createBrowserRouter([
   {
     path: '/',
-  element: <Layout />,
+    element: <Layout />,
     children: [
-      { index: true, element: <TodayPage /> },
-      { path: 'projects', element: <ProjectsPage /> },
-      { path: 'login', element: <LoginPage /> },
-      { path: 'register', element: <RegisterPage /> },
+      { index: true, element: <Suspense fallback={Fallback}><TodayPage /></Suspense> },
+      { path: 'projects', element: <Suspense fallback={Fallback}><ProjectsPage /></Suspense> },
+      { path: 'login', element: <Suspense fallback={Fallback}><LoginPage /></Suspense> },
+      { path: 'register', element: <Suspense fallback={Fallback}><RegisterPage /></Suspense> },
     ],
   },
 ])
 
+const theme = createTheme({
+  palette: { mode: 'light' },
+})
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <RouterProvider router={router} />
+    </ThemeProvider>
   </React.StrictMode>
 )

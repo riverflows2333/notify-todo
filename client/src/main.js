@@ -1,23 +1,28 @@
-import { jsx as _jsx } from "react/jsx-runtime";
-import React from 'react';
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import './index.css';
-import { LoginPage } from './pages/Login';
-import { RegisterPage } from './pages/Register';
-import { TodayPage } from './pages/Today';
-import { ProjectsPage } from './pages/Projects';
+const LoginPage = lazy(() => import('./pages/Login').then(m => ({ default: m.LoginPage })));
+const RegisterPage = lazy(() => import('./pages/Register').then(m => ({ default: m.RegisterPage })));
+const TodayPage = lazy(() => import('./pages/Today').then(m => ({ default: m.TodayPage })));
+const ProjectsPage = lazy(() => import('./pages/Projects').then(m => ({ default: m.ProjectsPage })));
 import Layout from './pages/Layout';
+import { ThemeProvider, createTheme, CssBaseline, Box, CircularProgress } from '@mui/material';
+const Fallback = (_jsx(Box, { sx: { display: 'flex', alignItems: 'center', justifyContent: 'center', py: 8 }, children: _jsx(CircularProgress, {}) }));
 const router = createBrowserRouter([
     {
         path: '/',
         element: _jsx(Layout, {}),
         children: [
-            { index: true, element: _jsx(TodayPage, {}) },
-            { path: 'projects', element: _jsx(ProjectsPage, {}) },
-            { path: 'login', element: _jsx(LoginPage, {}) },
-            { path: 'register', element: _jsx(RegisterPage, {}) },
+            { index: true, element: _jsx(Suspense, { fallback: Fallback, children: _jsx(TodayPage, {}) }) },
+            { path: 'projects', element: _jsx(Suspense, { fallback: Fallback, children: _jsx(ProjectsPage, {}) }) },
+            { path: 'login', element: _jsx(Suspense, { fallback: Fallback, children: _jsx(LoginPage, {}) }) },
+            { path: 'register', element: _jsx(Suspense, { fallback: Fallback, children: _jsx(RegisterPage, {}) }) },
         ],
     },
 ]);
-createRoot(document.getElementById('root')).render(_jsx(React.StrictMode, { children: _jsx(RouterProvider, { router: router }) }));
+const theme = createTheme({
+    palette: { mode: 'light' },
+});
+createRoot(document.getElementById('root')).render(_jsx(React.StrictMode, { children: _jsxs(ThemeProvider, { theme: theme, children: [_jsx(CssBaseline, {}), _jsx(RouterProvider, { router: router })] }) }));

@@ -1,31 +1,32 @@
-import { Link, Outlet, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../store'
+import { AppBar, Toolbar, Typography, Button, Container, Box, Link, Stack } from '@mui/material'
 
 export default function Layout() {
   const { token, setToken } = useAuth()
   const nav = useNavigate()
   return (
-    <div className="min-h-screen">
-      <header className="border-b bg-white">
-        <div className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-4">
-          <Link to="/" className="font-semibold">Todolist</Link>
-          <nav className="flex-1">
-            <Link className="mr-4" to="/">Today</Link>
-            <Link className="mr-4" to="/projects">Projects</Link>
-          </nav>
+    <Box minHeight="100vh" display="flex" flexDirection="column">
+      <AppBar position="static" color="default" elevation={1}>
+        <Toolbar>
+          <Typography variant="h6" sx={{ mr: 2 }}>Todolist</Typography>
+          <Stack direction="row" spacing={2} sx={{ flex: 1 }}>
+            <Link component={RouterLink} to="/" underline="none" color="inherit">Today</Link>
+            <Link component={RouterLink} to="/projects" underline="none" color="inherit">Projects</Link>
+          </Stack>
           {token ? (
-            <button className="text-sm text-gray-600" onClick={() => { setToken(null); nav('/login') }}>退出</button>
+            <Button size="small" onClick={() => { setToken(null); nav('/login') }}>退出</Button>
           ) : (
-            <div className="text-sm">
-              <Link className="mr-3" to="/login">登录</Link>
-              <Link to="/register">注册</Link>
-            </div>
+            <Stack direction="row" spacing={1}>
+              <Button size="small" component={RouterLink} to="/login">登录</Button>
+              <Button size="small" component={RouterLink} to="/register">注册</Button>
+            </Stack>
           )}
-        </div>
-      </header>
-      <main className="mx-auto max-w-5xl px-4 py-6">
+        </Toolbar>
+      </AppBar>
+      <Container maxWidth="lg" sx={{ py: 3, flex: 1 }}>
         <Outlet />
-      </main>
-    </div>
+      </Container>
+    </Box>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, Priority, Status } from '../api'
+import { Typography, Card, CardContent, Chip, Stack, Box } from '@mui/material'
 
 type Task = {
   id: number
@@ -28,34 +29,38 @@ export function TodayPage() {
   useEffect(() => { fetchToday() }, [])
 
   return (
-    <div>
-      <h1 className="text-xl font-semibold mb-4">今日任务</h1>
+    <Box>
+      <Typography variant="h5" fontWeight={600} mb={2}>今日任务</Typography>
       {loading ? (
-        <div>加载中…</div>
+        <Typography color="text.secondary">加载中…</Typography>
       ) : (
-        <ul className="space-y-2">
+        <Stack spacing={1.5}>
           {tasks.map(t => (
-            <li key={t.id} className="bg-white rounded border px-3 py-2">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-medium">{t.title}</div>
-                  {t.description && <div className="text-sm text-gray-600">{t.description}</div>}
-                </div>
-                <div className="text-xs text-gray-600 space-x-2">
-                  <span className="px-2 py-0.5 rounded bg-gray-100">{t.status ?? 'todo'}</span>
-                  <span className={`px-2 py-0.5 rounded ${t.priority==='high'?'bg-red-100 text-red-700':t.priority==='low'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-700'}`}>{t.priority ?? 'normal'}</span>
-                  {t.due_date && (
-                    <span className={new Date(t.due_date) < new Date(new Date().toDateString()) ? 'text-red-600' : ''}>
-                      截止: {new Date(t.due_date).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </li>
+            <Card key={t.id} variant="outlined">
+              <CardContent>
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={600}>{t.title}</Typography>
+                    {t.description && (
+                      <Typography variant="body2" color="text.secondary">{t.description}</Typography>
+                    )}
+                  </Box>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip size="small" label={t.status ?? 'todo'} />
+                    <Chip size="small" color={t.priority==='high'?'error':t.priority==='low'?'success':'default'} label={t.priority ?? 'normal'} />
+                    {t.due_date && (
+                      <Typography variant="caption" color={new Date(t.due_date) < new Date(new Date().toDateString()) ? 'error' : 'text.secondary'}>
+                        截止: {new Date(t.due_date).toLocaleDateString()}
+                      </Typography>
+                    )}
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
           ))}
-          {tasks.length === 0 && <div className="text-gray-500">暂无今日任务</div>}
-        </ul>
+          {tasks.length === 0 && <Typography color="text.secondary">暂无今日任务</Typography>}
+        </Stack>
       )}
-    </div>
+    </Box>
   )
 }

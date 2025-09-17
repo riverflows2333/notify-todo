@@ -1,7 +1,8 @@
 import { FormEvent, useState } from 'react'
 import { api } from '../api'
 import { useAuth } from '../store'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link as RouterLink } from 'react-router-dom'
+import { Paper, TextField, Button, Stack, Typography, Alert, Link, Box } from '@mui/material'
 
 export function LoginPage() {
   const [email, setEmail] = useState('')
@@ -28,15 +29,21 @@ export function LoginPage() {
   }
 
   return (
-    <div className="max-w-sm mx-auto">
-      <h1 className="text-xl font-semibold mb-4">登录</h1>
-      {error && <div className="mb-3 text-red-600 text-sm">{error}</div>}
-      <form onSubmit={onSubmit} className="space-y-3">
-        <input className="w-full border px-3 py-2 rounded" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-        <input className="w-full border px-3 py-2 rounded" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
-        <button className="w-full bg-blue-600 text-white rounded py-2">登录</button>
-      </form>
-      <div className="mt-3 text-sm">没有账号？<Link className="text-blue-600" to="/register">去注册</Link></div>
-    </div>
+    <Box maxWidth={380} mx="auto">
+      <Typography variant="h5" fontWeight={600} mb={2}>登录</Typography>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <form onSubmit={onSubmit}>
+          <Stack spacing={2}>
+            <TextField label="Email" fullWidth value={email} onChange={e=>setEmail(e.target.value)} />
+            <TextField label="Password" type="password" fullWidth value={password} onChange={e=>setPassword(e.target.value)} />
+            <Button type="submit" variant="contained" fullWidth>登录</Button>
+          </Stack>
+        </form>
+      </Paper>
+      <Typography variant="body2" sx={{ mt: 2 }}>
+        没有账号？<Link component={RouterLink} to="/register">去注册</Link>
+      </Typography>
+    </Box>
   )
 }
