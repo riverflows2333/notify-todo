@@ -43,8 +43,12 @@ export default function Layout() {
     }
     ws.onmessage = (ev) => {
       const text = typeof ev.data === 'string' ? ev.data : ''
-      // ignore keepalive pong
-      if (text === 'pong') return
+      // ignore keepalive pong for notifications, but keep a debug log
+      if (text === 'pong') {
+        // eslint-disable-next-line no-console
+        console.debug('[WS] pong')
+        return
+      }
       let title = '任务提醒'
       let body = text
       try {

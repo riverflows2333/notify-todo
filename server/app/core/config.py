@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     APP_PORT: int = 8000
 
     FRONTEND_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    FRONTEND_LOGIN_PATH: str = "/login"
 
     SECRET_KEY: str = "change-me"
     ALGORITHM: str = "HS256"
@@ -33,6 +35,12 @@ class Settings(BaseSettings):
     @property
     def frontend_origins(self) -> List[str]:
         return [o.strip() for o in self.FRONTEND_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def frontend_login_url(self) -> str:
+        base = self.FRONTEND_BASE_URL.rstrip('/')
+        path = self.FRONTEND_LOGIN_PATH if self.FRONTEND_LOGIN_PATH.startswith('/') else '/' + self.FRONTEND_LOGIN_PATH
+        return f"{base}{path}"
 
 
 @lru_cache

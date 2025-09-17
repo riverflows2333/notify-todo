@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
  
 
 from app.core.config import get_settings
@@ -50,5 +51,14 @@ app.include_router(users_router)
 
 
 @app.get("/")
-async def root():
+async def root(req: Request):
+    # If no Authorization header (unauthenticated browser hit), redirect to frontend login
+    auth = req.headers.get("authorization") or req.headers.get("Authorization")
+    if not auth:
+        return RedirectResponse(settings.frontend_login_url, status_code=302)
     return {"message": "Todolist Server running"}
+
+@app.get("/auth/redirect")
+async def auth_redirect(_: Request):
+    # Explicit endpoint to redirect browsers to login
+    return RedirectResponse(settings.frontend_login_url, status_code=302)
