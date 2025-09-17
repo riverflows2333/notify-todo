@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import List
+import logging
+from datetime import timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
@@ -20,8 +22,11 @@ from app.schemas.project import (
 )
 from app.utils.deps import get_current_user
 from app.models.user import User
+from app.utils.scheduler import start_scheduler, schedule_datetime
+from app.api.routes.ws import manager
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+logger = logging.getLogger(__name__)
 
 
 def today_cache_key(user_id: int) -> str:
@@ -164,12 +169,19 @@ async def create_task(
     proj = await db.get(Project, board.project_id)
     if not proj or proj.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    # normalize remind_at for storage: convert to UTC naive to match TIMESTAMP WITHOUT TIME ZONE
+    raw_remind = data.remind_at
+    persist_remind = None
+    if raw_remind is not None:
+        persist_remind = (raw_remind.astimezone(timezone.utc).replace(tzinfo=None)
+                          if raw_remind.tzinfo is not None else raw_remind)
     task = Task(
         title=data.title,
         description=data.description,
         status=data.status or "todo",
         priority=data.priority or "normal",
         due_date=data.due_date,
+        remind_at=persist_remind,
         is_today=data.is_today or False,
         board_id=board_id,
         owner_id=current_user.id,
@@ -177,6 +189,16 @@ async def create_task(
     db.add(task)
     await db.commit()
     await db.refresh(task)
+    # schedule reminder if needed
+    if raw_remind is not None:
+        try:
+            job_id = f"remind-task-{task.id}"
+            async def _notify():
+                await manager.send_to_user(current_user.id, f"提醒：{task.title}")
+            schedule_datetime(job_id, raw_remind, _notify)
+            logger.info("Scheduled reminder %s at %s for user %s", job_id, raw_remind, current_user.id)
+        except Exception:
+            pass
     await r.delete(today_cache_key(current_user.id))
     return task
 
@@ -212,10 +234,34 @@ async def update_task(
     task = await db.get(Task, task_id)
     if not task or task.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    for k, v in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    # normalize remind_at for storage: UTC naive for TIMESTAMP WITHOUT TIME ZONE
+    if "remind_at" in payload:
+        v = payload["remind_at"]
+        if v is not None and getattr(v, "tzinfo", None) is not None:
+            payload["remind_at"] = v.astimezone(timezone.utc).replace(tzinfo=None)
+    for k, v in payload.items():
         setattr(task, k, v)
     await db.commit()
     await db.refresh(task)
+    # reschedule reminder
+    try:
+        sch = start_scheduler()
+        job_id = f"remind-task-{task.id}"
+        if sch.get_job(job_id):
+            sch.remove_job(job_id)
+        # prefer request payload remind_at (keeps tzinfo); fallback to stored value (naive UTC -> make aware UTC)
+        when_req = data.model_dump(exclude_unset=True).get("remind_at")
+        when = when_req
+        if when is None and task.remind_at is not None:
+            when = task.remind_at.replace(tzinfo=timezone.utc)
+        if when is not None:
+            async def _notify():
+                await manager.send_to_user(current_user.id, f"提醒：{task.title}")
+            schedule_datetime(job_id, when, _notify)
+            logger.info("Rescheduled reminder %s at %s for user %s", job_id, when, current_user.id)
+    except Exception:
+        pass
     await r.delete(today_cache_key(current_user.id))
     return task
 
@@ -232,6 +278,14 @@ async def delete_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     await db.delete(task)
     await db.commit()
+    # cancel reminder
+    try:
+        sch = start_scheduler()
+        job_id = f"remind-task-{task_id}"
+        if sch.get_job(job_id):
+            sch.remove_job(job_id)
+    except Exception:
+        pass
     await r.delete(today_cache_key(current_user.id))
     return {"message": "deleted"}
 

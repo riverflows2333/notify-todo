@@ -6,6 +6,8 @@
 - 基础 URL：`http://<server-host>:8000`
 - 认证方式（建议）：JWT Bearer（`Authorization: Bearer <token>`）
 - 时间格式：ISO 8601（UTC 或带时区），如：`2025-09-17T08:00:00Z`
+- 时间格式：ISO 8601（UTC 或带时区），如：`2025-09-17T08:00:00Z`
+- 时区：通过环境变量 `TIMEZONE` 配置（默认 `UTC`；中国大陆推荐 `Asia/Shanghai`）；服务端调度使用该时区。
 - 状态枚举：`status ∈ { todo, doing, done }`（默认 `todo`）
 - 优先级：`priority` 示例实现为 `normal`/`high` 等（默认 `normal`）
 - 错误响应：`{"detail": "..."}`
@@ -154,6 +156,7 @@
   "status": "todo",
   "priority": "normal",
   "due_date": "2025-09-20T00:00:00Z",
+  "remind_at": "2025-09-19T08:30:00Z",
   "is_today": true,
   "created_at": "2025-09-17T08:00:00Z",
   "updated_at": "2025-09-17T08:30:00Z"
@@ -164,6 +167,10 @@
 
 - GET `/projects/boards/{board_id}/tasks`
 - 200 OK：`Task[]`
+
+字段说明：
+
+- `remind_at`（可选）：单次提醒的时间点，精确到分钟；留空表示不提醒。创建/更新时如提供该字段，服务端会调度一个提醒任务，时间到达后通过 WebSocket 向对应用户推送提醒消息；若更新为 `null` 则取消提醒。
 
 ### 4.2 新建任务（需认证）
 
@@ -176,7 +183,8 @@
   "status": "todo",
   "priority": "normal",
   "due_date": null,
-  "is_today": false
+  "is_today": false,
+  "remind_at": null
 }
 ```
 
@@ -242,16 +250,20 @@
 
 ---
 
-## 7. WebSocket（示例）
+### 7. WebSocket（提醒推送，需认证）
 
-- 连接：`GET /ws`
-- 说明：示例中未校验 token，固定 `user_id = 1`，仅用于演示连接与推送逻辑。
+- 连接：`GET /ws`（需携带 JWT）
+  - 支持两种方式：
+    - 查询参数：`/ws?token=<jwt>`
+    - 或请求头：`Authorization: Bearer <jwt>`
+- 鉴权：服务端会验证 JWT 并识别 `user_id`，仅向该用户的连接推送消息。
+- 提醒：当任务的 `remind_at` 到达时，服务端向对应用户推送提醒消息，前端可用浏览器 Notification 展示。
 - 消息格式示例：
 
 ```json
 {
-  "type": "task.updated",
-  "data": { "id": 100, "status": "done" }
+  "type": "task.reminder",
+  "data": { "id": 100, "title": "开会", "remind_at": "2025-09-19T08:30:00Z" }
 }
 ```
 
@@ -335,6 +347,7 @@ Invoke-RestMethod -Method Get -Uri "$BASE/projects/today" -Headers $Headers
 
 ## 10. 版本与变更
 
+- v0.4（2025-09-17）：新增 `TIMEZONE` 环境变量；APScheduler 使用配置时区；`remind_at` 在无时区时按配置时区解释。
 - v0.3（2025-09-17）：启用强制 JWT 鉴权（除注册/登录外）、按用户隔离与缓存修订。
 - v0.2（2025-09-17）：对齐 `server/app/api/routes`，修正路径/方法/示例。
 - v0.1（2025-09-17）：初版草拟。

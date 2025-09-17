@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from typing import Dict, Set
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from jose import jwt, JWTError
+from app.core.config import get_settings
 
 
 router = APIRouter()
+settings = get_settings()
 
 
 class ConnectionManager:
@@ -33,8 +36,22 @@ manager = ConnectionManager()
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # In real usage, you would parse token and get user_id
-    user_id = 1
+    # parse token from query param or Authorization header
+    token = websocket.query_params.get("token")
+    if not token:
+        auth = websocket.headers.get("authorization") or websocket.headers.get("Authorization")
+        if auth and auth.lower().startswith("bearer "):
+            token = auth.split(" ", 1)[1]
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        sub = payload.get("sub")
+        user_id = int(sub)
+    except (JWTError, ValueError, TypeError):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     await manager.connect(user_id, websocket)
     try:
         while True:

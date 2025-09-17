@@ -53,6 +53,8 @@ class TaskBase(BaseModel):
     due_date: date | None = None
     is_today: bool | None = None
     board_id: int
+    # 提醒时间（ISO 日期时间，精确到分钟），可为空
+    remind_at: datetime | None = None
 
 
 class TaskCreate(TaskBase):
@@ -66,6 +68,7 @@ class TaskUpdate(BaseModel):
     priority: str | None = None
     due_date: date | None = None
     is_today: bool | None = None
+    remind_at: datetime | None = None
 
 
 class TaskOut(TaskBase):

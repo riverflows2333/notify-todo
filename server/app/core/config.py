@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Timezone for scheduler & datetime interpretation (IANA TZ, e.g., "UTC", "Asia/Shanghai")
+    TIMEZONE: str = "UTC"
+
     MEMOS_BASE_URL: str | None = None
     MEMOS_TOKEN: str | None = None
     BLINKO_BASE_URL: str | None = None

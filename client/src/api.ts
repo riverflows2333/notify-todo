@@ -33,6 +33,7 @@ export type Task = {
   board_id: number
   is_today?: boolean
   due_date?: string | null
+  remind_at?: string | null
 }
 
 // Project APIs

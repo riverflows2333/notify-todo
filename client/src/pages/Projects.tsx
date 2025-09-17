@@ -22,7 +22,7 @@ export function ProjectsPage() {
   const [boards, setBoards] = useState<Board[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [formBoardId, setFormBoardId] = useState<number | null>(null)
-  const [form, setForm] = useState<{ title: string; description?: string; priority: Priority; is_today: boolean; due?: string }>({ title: '', description: '', priority: 'normal', is_today: false, due: '' })
+  const [form, setForm] = useState<{ title: string; description?: string; priority: Priority; is_today: boolean; due?: string; remind?: string }>({ title: '', description: '', priority: 'normal', is_today: false, due: '', remind: '' })
 
   // 初始化加载项目
   useEffect(() => { (async () => {
@@ -93,11 +93,12 @@ export function ProjectsPage() {
       priority: form.priority,
       is_today: form.is_today,
       due_date: form.due ? new Date(form.due).toISOString() : undefined,
+      remind_at: form.remind ? new Date(form.remind).toISOString() : undefined,
       status: 'todo',
     }
     const t = await createTask(formBoardId, payload)
     setTasks(prev => [...prev, t])
-    setForm({ title: '', description: '', priority: 'normal', is_today: false, due: '' })
+    setForm({ title: '', description: '', priority: 'normal', is_today: false, due: '', remind: '' })
   }
   async function renameTask(id: number) {
     const title = prompt('新标题')?.trim(); if (!title) return
@@ -125,6 +126,43 @@ export function ProjectsPage() {
     const d = prompt('设置截止日期 (YYYY-MM-DD)，留空清除', (cur?.due_date ?? '').slice(0,10))
     const iso = d ? new Date(d).toISOString() : null
     const t = await updateTask(id, { due_date: iso })
+    setTasks(prev => prev.map(x => x.id === id ? t : x))
+  }
+
+  // ---- 时间显示与解析辅助 ----
+  const hasTZ = (s: string) => /[zZ]|[+\-]\d{2}:?\d{2}$/.test(s)
+  const parseServerDateTime = (s?: string | null): Date | null => {
+    if (!s) return null
+    try {
+      const str = String(s)
+      const iso = hasTZ(str) ? str : str + 'Z'
+      const d = new Date(iso)
+      if (isNaN(d.getTime())) return new Date(str)
+      return d
+    } catch { return null }
+  }
+  const formatLocalDateTime = (s?: string | null) => {
+    const d = parseServerDateTime(s)
+    return d ? d.toLocaleString() : ''
+  }
+  const toLocalInputValue = (s?: string | null) => {
+    const d = parseServerDateTime(s)
+    if (!d) return ''
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const yyyy = d.getFullYear()
+    const mm = pad(d.getMonth() + 1)
+    const dd = pad(d.getDate())
+    const hh = pad(d.getHours())
+    const mi = pad(d.getMinutes())
+    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`
+  }
+
+  async function setRemindAt(id: number) {
+    const cur = tasks.find(t => t.id === id)
+    const init = toLocalInputValue(cur?.remind_at)
+    const v = prompt('设置提醒时间 (YYYY-MM-DDTHH:mm)，留空清除', init)
+    const iso = v ? new Date(v).toISOString() : null
+    const t = await updateTask(id, { remind_at: iso })
     setTasks(prev => prev.map(x => x.id === id ? t : x))
   }
 
@@ -251,6 +289,7 @@ export function ProjectsPage() {
                   </FormControl>
                   <FormControlLabel control={<Checkbox checked={form.is_today} onChange={e=>setForm(f=>({...f, is_today:e.target.checked}))} />} label="加入今日" />
                   <TextField size="small" type="date" label="截止" InputLabelProps={{ shrink: true }} value={form.due} onChange={e=>setForm(f=>({...f, due:e.target.value}))} />
+                  <TextField size="small" type="datetime-local" label="提醒时间" InputLabelProps={{ shrink: true }} value={form.remind} onChange={e=>setForm(f=>({...f, remind:e.target.value}))} />
                   <Box flex={1} />
                   <Button variant="contained" onClick={addTask} disabled={!form.title.trim() || !formBoardId}>创建</Button>
                 </Stack>
@@ -290,6 +329,11 @@ export function ProjectsPage() {
                                     截止: {new Date(t.due_date).toLocaleDateString()}
                                   </Typography>
                                 )}
+                                {t.remind_at && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    提醒: {formatLocalDateTime(t.remind_at)}
+                                  </Typography>
+                                )}
                                 <Typography variant="caption">今日: {t.is_today ? '✓' : '✗'}</Typography>
                               </Stack>
                             </Box>
@@ -297,6 +341,7 @@ export function ProjectsPage() {
                               <Button size="small" onClick={()=>cycleStatus(t.id)}>切换状态</Button>
                               <Button size="small" onClick={()=>toggleToday(t.id)}>{t.is_today?'移出今日':'加入今日'}</Button>
                               <Button size="small" onClick={()=>setDueDate(t.id)}>截止日期</Button>
+                              <Button size="small" onClick={()=>setRemindAt(t.id)}>提醒时间</Button>
                               <Button size="small" onClick={()=>renameTask(t.id)}>重命名</Button>
                               <Button size="small" color="error" onClick={()=>removeTask(t.id)}>删除</Button>
                             </Stack>
