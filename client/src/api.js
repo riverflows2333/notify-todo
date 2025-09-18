@@ -16,6 +16,21 @@ export const wsUrl = () => {
         return API_BASE.replace('http://', 'ws://') + '/ws';
     return 'ws://127.0.0.1:8000/ws';
 };
+export async function getSubtasks(taskId) {
+    const { data } = await api.get(`/projects/tasks/${taskId}/subtasks`);
+    return data;
+}
+export async function createSubtask(taskId, payload) {
+    const { data } = await api.post(`/projects/tasks/${taskId}/subtasks`, { ...payload, task_id: taskId });
+    return data;
+}
+export async function updateSubtask(subtaskId, payload) {
+    const { data } = await api.patch(`/projects/subtasks/${subtaskId}`, payload);
+    return data;
+}
+export async function deleteSubtask(subtaskId) {
+    await api.delete(`/projects/subtasks/${subtaskId}`);
+}
 export async function getBlinkoSetting() {
     const { data } = await api.get('/integrations/blinko');
     return data;

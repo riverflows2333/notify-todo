@@ -5,6 +5,8 @@ import {
   getProjects, createProject, updateProject, deleteProject,
   getBoards, createBoard, updateBoard, deleteBoard,
   getTasks, createTask, updateTask, deleteTask,
+  Subtask, getSubtasks, createSubtask, updateSubtask,
+  deleteSubtask,
 } from '../api'
 import {
   Box, Paper, Typography, Button, Stack,
@@ -21,6 +23,7 @@ export function ProjectsPage() {
   const [activeProject, setActiveProject] = useState<number | null>(null)
   const [boards, setBoards] = useState<Board[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [subtasksMap, setSubtasksMap] = useState<Record<number, Subtask[]>>({}) // taskId -> subtasks
   const [formBoardId, setFormBoardId] = useState<number | null>(null)
   const [form, setForm] = useState<{ title: string; description?: string; priority: Priority; is_today: boolean; due?: string; remind?: string }>({ title: '', description: '', priority: 'normal', is_today: false, due: '', remind: '' })
 
@@ -39,6 +42,11 @@ export function ProjectsPage() {
     setFormBoardId(bs[0]?.id ?? null)
     const all: Task[] = (await Promise.all(bs.map(b => getTasks(b.id)))).flat()
     setTasks(all)
+    // 并行加载每个任务的子任务
+    const pairs = await Promise.all(all.map(async t => [t.id, await getSubtasks(t.id)] as const))
+    const map: Record<number, Subtask[]> = {}
+    for (const [id, subs] of pairs) map[id] = subs
+    setSubtasksMap(map)
   })() }, [activeProject])
 
   // 项目 CRUD
@@ -109,6 +117,7 @@ export function ProjectsPage() {
     if (!confirm('删除任务？')) return
     await deleteTask(id)
     setTasks(prev => prev.filter(x => x.id !== id))
+    setSubtasksMap(prev => { const n={...prev}; delete n[id]; return n })
   }
   function nextStatus(s?: Task['status']): Task['status'] { if (s === 'todo') return 'doing'; if (s === 'doing') return 'done'; return 'todo' }
   async function cycleStatus(id: number) {
@@ -164,6 +173,27 @@ export function ProjectsPage() {
     const iso = v ? new Date(v).toISOString() : null
     const t = await updateTask(id, { remind_at: iso })
     setTasks(prev => prev.map(x => x.id === id ? t : x))
+  }
+
+  // 子任务相关
+  async function addSubtask(taskId: number) {
+    const title = prompt('子任务标题')?.trim(); if (!title) return
+    const sub = await createSubtask(taskId, { title })
+    setSubtasksMap(prev => ({ ...prev, [taskId]: [...(prev[taskId] ?? []), sub] }))
+  }
+  async function toggleSubtaskDone(taskId: number, sub: Subtask) {
+    const updated = await updateSubtask(sub.id, { done: !sub.done })
+    setSubtasksMap(prev => ({ ...prev, [taskId]: (prev[taskId] ?? []).map(s => s.id===sub.id ? updated : s) }))
+  }
+  async function renameSubtask(taskId: number, sub: Subtask) {
+    const title = prompt('新标题', sub.title)?.trim(); if (!title) return
+    const updated = await updateSubtask(sub.id, { title })
+    setSubtasksMap(prev => ({ ...prev, [taskId]: (prev[taskId] ?? []).map(s => s.id===sub.id ? updated : s) }))
+  }
+  async function removeSubtask(taskId: number, sub: Subtask) {
+    if (!confirm('删除子任务？')) return
+    await deleteSubtask(sub.id)
+    setSubtasksMap(prev => ({ ...prev, [taskId]: (prev[taskId] ?? []).filter(s => s.id !== sub.id) }))
   }
 
   const columns: Status[] = ['todo', 'doing', 'done']
@@ -335,6 +365,18 @@ export function ProjectsPage() {
                                   </Typography>
                                 )}
                                 <Typography variant="caption">今日: {t.is_today ? '✓' : '✗'}</Typography>
+                              </Stack>
+                              {/* 子任务列表 */}
+                              <Stack spacing={0.5} mt={1}>
+                                {(subtasksMap[t.id] ?? []).map(sub => (
+                                  <Stack key={sub.id} direction="row" spacing={1} alignItems="center">
+                                    <Checkbox size="small" checked={sub.done} onChange={()=>toggleSubtaskDone(t.id, sub)} />
+                                    <Typography variant="body2" sx={{ textDecoration: sub.done ? 'line-through' : 'none' }}>{sub.title}</Typography>
+                                    <Button size="small" onClick={()=>renameSubtask(t.id, sub)}>重命名</Button>
+                                    <Button size="small" color="error" onClick={()=>removeSubtask(t.id, sub)}>删除</Button>
+                                  </Stack>
+                                ))}
+                                <Button size="small" onClick={()=>addSubtask(t.id)}>+ 添加子任务</Button>
                               </Stack>
                             </Box>
                             <Stack direction="row" spacing={1}>

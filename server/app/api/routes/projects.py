@@ -35,6 +35,41 @@ def today_cache_key(user_id: int) -> str:
     return f"today:{user_id}"
 
 
+async def _compose_blinko_content(db: AsyncSession, task: Task) -> str:
+    """构建用于 Blinko 的简洁 Markdown 内容，包含子任务清单。
+    规则：
+    - 第一行：粗体标题
+    - 第二段（可选）：任务描述
+    - 第三段（可选）：元信息（状态/优先级/截止/提醒/今日）以 | 分隔
+    - 其后：子任务清单，每行 "- [ ] 标题"；若已完成则 "- [x] 标题"
+    """
+    lines: list[str] = [f"**{task.title}**"]
+    if task.description:
+        lines.append(task.description)
+    meta: list[str] = []
+    if getattr(task, "status", None):
+        meta.append(f"状态: {task.status}")
+    if getattr(task, "priority", None):
+        meta.append(f"优先级: {task.priority}")
+    if getattr(task, "due_date", None):
+        meta.append(f"截止: {task.due_date}")
+    if getattr(task, "remind_at", None):
+        meta.append(f"提醒: {task.remind_at} UTC")
+    if getattr(task, "is_today", None):
+        meta.append("今日")
+    if meta:
+        lines.append("\n" + " | ".join(meta))
+    # 子任务清单
+    subs = (
+        await db.execute(select(Subtask).where(Subtask.task_id == task.id))
+    ).scalars().all()
+    if subs:
+        checklist = [f"- [{'x' if s.done else ' '}] {s.title}" for s in subs]
+        lines.append("")
+        lines.extend(checklist)
+    return "\n\n".join(lines)
+
+
 @router.post("/", response_model=ProjectOut)
 async def create_project(
     data: ProjectCreate,
@@ -202,24 +237,8 @@ async def create_task(
             )
         ).scalars().first()
         if integ:
-            # Compose compact markdown content
-            lines = [f"**{task.title}**"]
-            if task.description:
-                lines.append(task.description)
-            meta: list[str] = []
-            if task.status:
-                meta.append(f"状态: {task.status}")
-            if task.priority:
-                meta.append(f"优先级: {task.priority}")
-            if task.due_date:
-                meta.append(f"截止: {task.due_date}")
-            if task.remind_at:
-                meta.append(f"提醒: {task.remind_at} UTC")
-            if task.is_today:
-                meta.append("今日")
-            if meta:
-                lines.append("\n" + " | ".join(meta))
-            content = "\n\n".join(lines)
+            # Compose compact markdown content (with subtasks)
+            content = await _compose_blinko_content(db, task)
             note_id = await upsert_todo(integ.base_url, integ.token, content, title=task.title)
             if note_id:
                 task.blinko_note_id = note_id
@@ -294,23 +313,7 @@ async def update_task(
             )
         ).scalars().first()
         if integ:
-            lines = [f"**{task.title}**"]
-            if task.description:
-                lines.append(task.description)
-            meta: list[str] = []
-            if task.status:
-                meta.append(f"状态: {task.status}")
-            if task.priority:
-                meta.append(f"优先级: {task.priority}")
-            if task.due_date:
-                meta.append(f"截止: {task.due_date}")
-            if task.remind_at:
-                meta.append(f"提醒: {task.remind_at} UTC")
-            if task.is_today:
-                meta.append("今日")
-            if meta:
-                lines.append("\n" + " | ".join(meta))
-            content = "\n\n".join(lines)
+            content = await _compose_blinko_content(db, task)
             note_id = await upsert_todo(integ.base_url, integ.token, content, note_id=task.blinko_note_id, title=task.title)
             if note_id and note_id != task.blinko_note_id:
                 task.blinko_note_id = note_id
@@ -396,6 +399,21 @@ async def create_subtask(
     db.add(sub)
     await db.commit()
     await db.refresh(sub)
+    # 触发父任务的 Blinko 同步（最佳努力）
+    try:
+        integ = (
+            await db.execute(
+                select(IntegrationSetting).where(
+                    IntegrationSetting.user_id == current_user.id,
+                    IntegrationSetting.provider == 'blinko'
+                )
+            )
+        ).scalars().first()
+        if integ and parent.blinko_note_id:
+            content = await _compose_blinko_content(db, parent)
+            await upsert_todo(integ.base_url, integ.token, content, note_id=parent.blinko_note_id, title=parent.title)
+    except Exception:
+        pass
     await r.delete(today_cache_key(current_user.id))
     return sub
 
@@ -418,8 +436,72 @@ async def update_subtask(
         setattr(sub, k, v)
     await db.commit()
     await db.refresh(sub)
+    # 触发父任务的 Blinko 同步（最佳努力）
+    try:
+        integ = (
+            await db.execute(
+                select(IntegrationSetting).where(
+                    IntegrationSetting.user_id == current_user.id,
+                    IntegrationSetting.provider == 'blinko'
+                )
+            )
+        ).scalars().first()
+        if integ and parent.blinko_note_id:
+            content = await _compose_blinko_content(db, parent)
+            await upsert_todo(integ.base_url, integ.token, content, note_id=parent.blinko_note_id, title=parent.title)
+    except Exception:
+        pass
     await r.delete(today_cache_key(current_user.id))
     return sub
+
+
+@router.get("/tasks/{task_id}/subtasks", response_model=List[SubtaskOut])
+async def list_subtasks(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    parent = await db.get(Task, task_id)
+    if not parent or parent.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    rows = (
+        await db.execute(select(Subtask).where(Subtask.task_id == task_id))
+    ).scalars().all()
+    return rows
+
+
+@router.delete("/subtasks/{subtask_id}")
+async def delete_subtask(
+    subtask_id: int,
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
+    sub = await db.get(Subtask, subtask_id)
+    if not sub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
+    parent = await db.get(Task, sub.task_id)
+    if not parent or parent.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
+    await db.delete(sub)
+    await db.commit()
+    # 父任务 Blinko 重同步（最佳努力）
+    try:
+        integ = (
+            await db.execute(
+                select(IntegrationSetting).where(
+                    IntegrationSetting.user_id == current_user.id,
+                    IntegrationSetting.provider == 'blinko'
+                )
+            )
+        ).scalars().first()
+        if integ and parent.blinko_note_id:
+            content = await _compose_blinko_content(db, parent)
+            await upsert_todo(integ.base_url, integ.token, content, note_id=parent.blinko_note_id, title=parent.title)
+    except Exception:
+        pass
+    await r.delete(today_cache_key(current_user.id))
+    return {"message": "deleted"}
 
 
 @router.get("/today", response_model=List[TaskOut])

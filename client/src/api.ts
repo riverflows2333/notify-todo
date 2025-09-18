@@ -36,6 +36,30 @@ export type Task = {
   remind_at?: string | null
 }
 
+// Subtask Types & APIs
+export type Subtask = {
+  id: number
+  title: string
+  done: boolean
+  task_id: number
+  created_at: string
+}
+export async function getSubtasks(taskId: number) {
+  const { data } = await api.get<Subtask[]>(`/projects/tasks/${taskId}/subtasks`)
+  return data
+}
+export async function createSubtask(taskId: number, payload: { title: string; done?: boolean }) {
+  const { data } = await api.post<Subtask>(`/projects/tasks/${taskId}/subtasks`, { ...payload, task_id: taskId })
+  return data
+}
+export async function updateSubtask(subtaskId: number, payload: Partial<{ title: string; done: boolean }>) {
+  const { data } = await api.patch<Subtask>(`/projects/subtasks/${subtaskId}`, payload)
+  return data
+}
+export async function deleteSubtask(subtaskId: number) {
+  await api.delete(`/projects/subtasks/${subtaskId}`)
+}
+
 // Integration APIs
 export type IntegrationSetting = { id: number; provider: string; base_url: string; token: string; user_id: number; created_at: string }
 export async function getBlinkoSetting() {
