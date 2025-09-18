@@ -76,6 +76,7 @@ class TaskOut(TaskBase):
     owner_id: int
     created_at: datetime
     updated_at: datetime
+    blinko_note_id: str | None = None
 
     class Config:
         from_attributes = True

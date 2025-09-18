@@ -36,6 +36,8 @@ class Task(Base):
     # 提醒时间（精确到分钟，可为空）；注意：需要数据库迁移以在现有库中添加该列
     remind_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     is_today: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    # Blinko note id mapping (optional). Requires DB migration for existing DB.
+    blinko_note_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     board_id: Mapped[int] = mapped_column(ForeignKey("board.id", ondelete="CASCADE"), index=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)

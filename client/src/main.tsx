@@ -6,6 +6,7 @@ const LoginPage = lazy(() => import('./pages/Login').then(m => ({ default: m.Log
 const RegisterPage = lazy(() => import('./pages/Register').then(m => ({ default: m.RegisterPage })))
 const TodayPage = lazy(() => import('./pages/Today').then(m => ({ default: m.TodayPage })))
 const ProjectsPage = lazy(() => import('./pages/Projects').then(m => ({ default: m.ProjectsPage })))
+const SettingsPage = lazy(() => import('./pages/Settings'))
 import Layout from './pages/Layout'
 import { ThemeProvider, createTheme, CssBaseline, Box, CircularProgress } from '@mui/material'
 import { useAuth } from './store'
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <AuthGuard><Suspense fallback={Fallback}><TodayPage /></Suspense></AuthGuard> },
       { path: 'projects', element: <AuthGuard><Suspense fallback={Fallback}><ProjectsPage /></Suspense></AuthGuard> },
+  { path: 'settings', element: <AuthGuard><Suspense fallback={Fallback}><SettingsPage /></Suspense></AuthGuard> },
       { path: 'login', element: <Suspense fallback={Fallback}><LoginPage /></Suspense> },
       { path: 'register', element: <Suspense fallback={Fallback}><RegisterPage /></Suspense> },
     ],

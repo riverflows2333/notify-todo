@@ -17,6 +17,7 @@ dependencies = [
 	"apscheduler>=3.10",
 	"python-multipart>=0.0.9",
     "pydantic[email]>=2.4",
+    "alembic>=1.13",
 ]
 
 [build-system]
@@ -29,3 +30,4 @@ package-dir = {"app" = "server/app"}
 
 [project.scripts]
 dev-server = "uvicorn:main"
+alembic = "alembic.config:main"

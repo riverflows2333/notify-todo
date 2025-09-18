@@ -36,6 +36,17 @@ export type Task = {
   remind_at?: string | null
 }
 
+// Integration APIs
+export type IntegrationSetting = { id: number; provider: string; base_url: string; token: string; user_id: number; created_at: string }
+export async function getBlinkoSetting() {
+  const { data } = await api.get<IntegrationSetting | null>('/integrations/blinko')
+  return data
+}
+export async function setBlinkoSetting(base_url: string, token: string) {
+  const { data } = await api.post<IntegrationSetting>('/integrations/blinko', { provider: 'blinko', base_url, token })
+  return data
+}
+
 // Project APIs
 export async function getProjects() {
   const { data } = await api.get<Project[]>('/projects')

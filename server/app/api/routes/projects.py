@@ -24,6 +24,8 @@ from app.utils.deps import get_current_user
 from app.models.user import User
 from app.utils.scheduler import start_scheduler, schedule_datetime
 from app.api.routes.ws import manager
+from app.models.integration import IntegrationSetting
+from app.services.blinko import upsert_todo, trash_notes
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 logger = logging.getLogger(__name__)
@@ -189,6 +191,43 @@ async def create_task(
     db.add(task)
     await db.commit()
     await db.refresh(task)
+    # Sync to Blinko if user configured integration
+    try:
+        integ = (
+            await db.execute(
+                select(IntegrationSetting).where(
+                    IntegrationSetting.user_id == current_user.id,
+                    IntegrationSetting.provider == 'blinko'
+                )
+            )
+        ).scalars().first()
+        if integ:
+            # Compose compact markdown content
+            lines = [f"**{task.title}**"]
+            if task.description:
+                lines.append(task.description)
+            meta: list[str] = []
+            if task.status:
+                meta.append(f"状态: {task.status}")
+            if task.priority:
+                meta.append(f"优先级: {task.priority}")
+            if task.due_date:
+                meta.append(f"截止: {task.due_date}")
+            if task.remind_at:
+                meta.append(f"提醒: {task.remind_at} UTC")
+            if task.is_today:
+                meta.append("今日")
+            if meta:
+                lines.append("\n" + " | ".join(meta))
+            content = "\n\n".join(lines)
+            note_id = await upsert_todo(integ.base_url, integ.token, content, title=task.title)
+            if note_id:
+                task.blinko_note_id = note_id
+                await db.commit()
+                await db.refresh(task)
+    except Exception:
+        # ignore external integration errors
+        pass
     # schedule reminder if needed
     if raw_remind is not None:
         try:
@@ -244,6 +283,41 @@ async def update_task(
         setattr(task, k, v)
     await db.commit()
     await db.refresh(task)
+    # Sync update to Blinko if configured
+    try:
+        integ = (
+            await db.execute(
+                select(IntegrationSetting).where(
+                    IntegrationSetting.user_id == current_user.id,
+                    IntegrationSetting.provider == 'blinko'
+                )
+            )
+        ).scalars().first()
+        if integ:
+            lines = [f"**{task.title}**"]
+            if task.description:
+                lines.append(task.description)
+            meta: list[str] = []
+            if task.status:
+                meta.append(f"状态: {task.status}")
+            if task.priority:
+                meta.append(f"优先级: {task.priority}")
+            if task.due_date:
+                meta.append(f"截止: {task.due_date}")
+            if task.remind_at:
+                meta.append(f"提醒: {task.remind_at} UTC")
+            if task.is_today:
+                meta.append("今日")
+            if meta:
+                lines.append("\n" + " | ".join(meta))
+            content = "\n\n".join(lines)
+            note_id = await upsert_todo(integ.base_url, integ.token, content, note_id=task.blinko_note_id, title=task.title)
+            if note_id and note_id != task.blinko_note_id:
+                task.blinko_note_id = note_id
+                await db.commit()
+                await db.refresh(task)
+    except Exception:
+        pass
     # reschedule reminder
     try:
         sch = start_scheduler()
@@ -276,6 +350,22 @@ async def delete_task(
     task = await db.get(Task, task_id)
     if not task or task.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    # sync removal to Blinko first (best effort)
+    try:
+        if task.blinko_note_id:
+            integ = (
+                await db.execute(
+                    select(IntegrationSetting).where(
+                        IntegrationSetting.user_id == current_user.id,
+                        IntegrationSetting.provider == 'blinko'
+                    )
+                )
+            ).scalars().first()
+            if integ:
+                # Prefer trash to respect recycle bin; hard delete can be added via param later
+                await trash_notes(integ.base_url, integ.token, [task.blinko_note_id])
+    except Exception:
+        pass
     await db.delete(task)
     await db.commit()
     # cancel reminder

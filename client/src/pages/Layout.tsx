@@ -82,6 +82,7 @@ export default function Layout() {
           <Stack direction="row" spacing={2} sx={{ flex: 1 }}>
             <Link component={RouterLink} to="/" underline="none" color="inherit">Today</Link>
             <Link component={RouterLink} to="/projects" underline="none" color="inherit">Projects</Link>
+            <Link component={RouterLink} to="/settings" underline="none" color="inherit">Settings</Link>
           </Stack>
           {token ? (
             <Button size="small" onClick={() => { setToken(null); nav('/login') }}>退出</Button>

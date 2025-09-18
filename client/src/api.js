@@ -16,6 +16,14 @@ export const wsUrl = () => {
         return API_BASE.replace('http://', 'ws://') + '/ws';
     return 'ws://127.0.0.1:8000/ws';
 };
+export async function getBlinkoSetting() {
+    const { data } = await api.get('/integrations/blinko');
+    return data;
+}
+export async function setBlinkoSetting(base_url, token) {
+    const { data } = await api.post('/integrations/blinko', { provider: 'blinko', base_url, token });
+    return data;
+}
 // Project APIs
 export async function getProjects() {
     const { data } = await api.get('/projects');

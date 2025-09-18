@@ -1,0 +1,2 @@
+This folder contains Alembic migration scripts.
+Run alembic commands from the project root using the alembic.ini provided at ./alembic.ini

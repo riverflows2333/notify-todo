@@ -13,6 +13,7 @@ from app.db import base  # noqa: F401
 from app.api.routes.auth import router as auth_router
 from app.api.routes.projects import router as projects_router
 from app.api.routes.ws import router as ws_router
+from app.api.routes.integrations import router as integrations_router
 from app.api.routes.users import router as users_router
 
 
@@ -48,6 +49,7 @@ app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(ws_router)
 app.include_router(users_router)
+app.include_router(integrations_router)
 
 
 @app.get("/")
