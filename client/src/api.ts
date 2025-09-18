@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuth } from './store'
 
 export const API_BASE: string = (import.meta as any).env?.VITE_API_BASE ?? 'http://127.0.0.1:8000'
 
@@ -12,6 +13,29 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
+
+// 统一拦截 401：清除 token 并跳转登录
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status
+    if (status === 401) {
+      try {
+        // 清理本地 token（Zustand + localStorage）
+        const { setToken } = useAuth.getState()
+        setToken(null)
+      } catch {}
+      // 避免对登录/注册页重复跳转
+      try {
+        const isAuthPath = typeof window !== 'undefined' && /\/login|\/register/.test(window.location.pathname)
+        if (!isAuthPath) {
+          window.location.replace('/login')
+        }
+      } catch {}
+    }
+    return Promise.reject(error)
+  }
+)
 
 export const wsUrl = () => {
   if (API_BASE.startsWith('https://')) return API_BASE.replace('https://', 'wss://') + '/ws'
