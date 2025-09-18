@@ -108,8 +108,12 @@ export type Subtask = {
   created_at: string
 }
 export async function getSubtasks(taskId: number) {
-  const { data } = await api.get<Subtask[]>(`/projects/tasks/${taskId}/subtasks`)
-  return data
+  try {
+    const { data } = await api.get<Subtask[]>(`/projects/tasks/${taskId}/subtasks`)
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
 }
 export async function createSubtask(taskId: number, payload: { title: string; done?: boolean }) {
   const { data } = await api.post<Subtask>(`/projects/tasks/${taskId}/subtasks`, { ...payload, task_id: taskId })
@@ -136,8 +140,12 @@ export async function setBlinkoSetting(base_url: string, token: string) {
 
 // Project APIs
 export async function getProjects() {
-  const { data } = await api.get<Project[]>('/projects')
-  return data
+  try {
+    const { data } = await api.get<Project[]>('/projects')
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
 }
 export async function createProject(payload: { name: string; description?: string | null }) {
   const { data } = await api.post<Project>('/projects', payload)
@@ -153,8 +161,12 @@ export async function deleteProject(id: number) {
 
 // Board APIs
 export async function getBoards(projectId: number) {
-  const { data } = await api.get<Board[]>(`/projects/${projectId}/boards`)
-  return data
+  try {
+    const { data } = await api.get<Board[]>(`/projects/${projectId}/boards`)
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
 }
 export async function createBoard(projectId: number, payload: { name: string }) {
   const { data } = await api.post<Board>(`/projects/${projectId}/boards`, { ...payload, project_id: projectId })
@@ -170,8 +182,12 @@ export async function deleteBoard(boardId: number) {
 
 // Task APIs
 export async function getTasks(boardId: number) {
-  const { data } = await api.get<Task[]>(`/projects/boards/${boardId}/tasks`)
-  return data
+  try {
+    const { data } = await api.get<Task[]>(`/projects/boards/${boardId}/tasks`)
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
 }
 export async function createTask(boardId: number, payload: Partial<Task> & { title: string }) {
   const { data } = await api.post(`/projects/boards/${boardId}/tasks`, { ...payload, board_id: boardId })
