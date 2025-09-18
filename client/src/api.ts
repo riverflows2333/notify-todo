@@ -37,10 +37,49 @@ api.interceptors.response.use(
   }
 )
 
+const WS_BASE: string | undefined = (import.meta as any).env?.VITE_WS_BASE
+
+function toWsOrigin(u: string) {
+  if (u.startsWith('wss://') || u.startsWith('ws://')) return u
+  if (u.startsWith('https://')) return 'wss://' + u.slice('https://'.length)
+  if (u.startsWith('http://')) return 'ws://' + u.slice('http://'.length)
+  return u
+}
+
+function ensureWsUrl(x: string): string {
+  // 支持三种形式：
+  // 1) 完整 ws(s) URL（可带/不带路径）
+  // 2) http(s) origin（自动转为 ws(s) 并追加 /ws）
+  // 3) 相对路径（如 /ws），会拼接 window.location.origin
+  const trimmed = x.replace(/\s+$/, '')
+  if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://')) {
+    const noTrail = trimmed.replace(/\/+$/, '')
+    // 如果没有路径，补 /ws
+    const url = new URL(noTrail)
+    if (!url.pathname || url.pathname === '/' ) return noTrail + '/ws'
+    return noTrail
+  }
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    const noTrail = trimmed.replace(/\/+$/, '')
+    return toWsOrigin(noTrail) + '/ws'
+  }
+  // 相对路径
+  const path = trimmed.startsWith('/') ? trimmed : '/' + trimmed
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:8000'
+  return toWsOrigin(origin) + path
+}
+
 export const wsUrl = () => {
-  if (API_BASE.startsWith('https://')) return API_BASE.replace('https://', 'wss://') + '/ws'
-  if (API_BASE.startsWith('http://')) return API_BASE.replace('http://', 'ws://') + '/ws'
-  return 'ws://127.0.0.1:8000/ws'
+  // 优先使用 VITE_WS_BASE；否则根据 API_BASE 推导；若仍为相对路径，则用当前站点 origin
+  if (WS_BASE && String(WS_BASE).trim()) {
+    return ensureWsUrl(String(WS_BASE).trim())
+  }
+  if (API_BASE.startsWith('http://') || API_BASE.startsWith('https://')) {
+    const origin = new URL(API_BASE).origin
+    return ensureWsUrl(origin)
+  }
+  // API_BASE 为相对路径（例如 /api），使用当前域名
+  return ensureWsUrl('/ws')
 }
 
 // Types
