@@ -1,7 +1,18 @@
 import axios from 'axios'
 import { useAuth } from './store'
 
-export const API_BASE: string = (import.meta as any).env?.VITE_API_BASE ?? 'http://127.0.0.1:8000'
+// 规范化 API 基地址：
+// - 若 VITE_API_BASE 未设置或为空，则默认 '/api'（生产同域反代最稳）
+// - 若为相对但非以 '/' 开头，补上前导 '/'
+// - 保留绝对地址 http(s):// 用于本地直连开发
+const RAW_API_BASE: string | undefined = (import.meta as any).env?.VITE_API_BASE
+function normalizeApiBase(v?: string): string {
+  const s = (v ?? '').trim()
+  if (!s) return '/api'
+  if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('/')) return s
+  return '/' + s
+}
+export const API_BASE: string = normalizeApiBase(RAW_API_BASE)
 
 export const api = axios.create({ baseURL: API_BASE })
 
